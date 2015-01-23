@@ -44,7 +44,7 @@ def deregister_func(lbname, region, instance_id):
 
 def register_instance(lbname, region, instance_id):
     elb = _get_connection(region, _get_iam_token())
-    print("Registering instance {} to ELB {}".format(instance, args.lbname))
+    print("Registering instance {} to ELB {}".format(instance, lbname))
     instances = elb.register_instances(lbname, [instance_id])
     print("Remaining instances: " + ",".join(instances))
     return(instances)
