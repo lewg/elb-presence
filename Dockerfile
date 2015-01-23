@@ -1,2 +1,2 @@
 FROM python:3-onbuild
-CMD ["/usr/src/app/elb-presence"]
+CMD ["python /usr/src/app/elb-presence"]

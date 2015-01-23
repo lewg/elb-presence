@@ -62,7 +62,9 @@ conn = boto.ec2.elb.connect_to_region(args.region,
                                       aws_access_key_id=creds.access_key,
                                       aws_secret_access_key=args.secret_key)
 
-instance = urllib2.urlopen('http://169.254.169.254/latest/meta-data/instance-id').read()
+metadata = get_instance_metadata(timeout=2.0, num_retries=5,
+            data='meta-data/instance-id')
+instance = list(metadata.keys())[0]
 
 print("Registering instance {} to ELB {}".format(instance, args.lbname))
 conn.register_instances(args.lbname, [instance])
