@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/local/bin/python
 
 import argparse
 import os
@@ -28,17 +28,18 @@ def _get_iam_credentials():
     if metadata:
         # I'm assuming there's only one role on the instance profile.
         security = list(metadata.values())[0]
-        creds.access_key = security['AccessKeyId']
-        creds.secret_key = _convert_key_to_str(security['SecretAccessKey'])
-        creds.security_token = security['Token']
+        creds['access_key'] = security['AccessKeyId']
+        creds['secret_key'] = _convert_key_to_str(security['SecretAccessKey'])
+        creds['security_token'] = security['Token']
         expires_at = security['Expiration']
-        creds.credential_expiry_time = datetime.strptime(
+        creds['credential_expiry_time'] = datetime.strptime(
             expires_at, "%Y-%m-%dT%H:%M:%SZ")
         boto.log.debug("Retrieved credentials will expire in %s at: %s",
-                       creds.credential_expiry_time - datetime.now(), expires_at)
+                       creds['credential_expiry_time'] - datetime.now(), expires_at)
         return(creds)
     else:
-        quit()
+        print("No security credentials available.")
+        sys.exit(1)
 
 def deregister_func(lbname, instance):
     def handler(*args, **kwargs):
@@ -58,8 +59,8 @@ args = parser.parse_args()
 creds = _get_iam_credentials()
 
 conn = boto.ec2.elb.connect_to_region(args.region,
-                                      aws_access_key_id=creds.access_key,
-                                      aws_secret_access_key=args.secret_key)
+                                      aws_access_key_id=creds['access_key'],
+                                      aws_secret_access_key=args['secret_key'])
 
 metadata = get_instance_metadata(timeout=2.0, num_retries=5,
             data='meta-data/instance-id')
