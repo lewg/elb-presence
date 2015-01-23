@@ -19,6 +19,10 @@ def _convert_key_to_str(key):
         return str(key)
     return key
 
+def _get_connection(region, security_token):
+    conn = boto.ec2.elb.connect_to_region(region, security_token=security_token)
+    return(conn)
+
 def _get_iam_credentials():
     creds = dict()
     # Lets use IAM Credentials
@@ -41,8 +45,12 @@ def _get_iam_credentials():
         print("No security credentials available.")
         sys.exit(1)
 
-def deregister_func(lbname, instance):
+def deregister_func(lbname, region, instance):
     def handler(*args, **kwargs):
+        # Refresh Credentials If Necessary
+        if creds['credential_expiry_time'] < datetime.now:
+            creds = _get_iam_credentials()
+            conn = _get_connection(region, creds['security_token'])
         print("Deregistering instance {} from ELB {}".format(instance, lbname))
         conn.deregister_instances(lbname, [instance])
         sys.exit(0)
@@ -58,9 +66,7 @@ args = parser.parse_args()
 
 creds = _get_iam_credentials()
 
-conn = boto.ec2.elb.connect_to_region(args.region,
-                                      aws_access_key_id=creds['access_key'],
-                                      aws_secret_access_key=creds['secret_key'])
+conn = _get_connection(args.region, creds['security_token'])
 
 metadata = get_instance_metadata(timeout=2.0, num_retries=5,
             data='meta-data/instance-id')
@@ -69,7 +75,7 @@ instance = list(metadata.keys())[0]
 print("Registering instance {} to ELB {}".format(instance, args.lbname))
 conn.register_instances(args.lbname, [instance])
 
-deregister = deregister_func(args.lbname, instance)
+deregister = deregister_func(args.lbname, args.region, instance)
 signal.signal(signal.SIGTERM, deregister)
 signal.signal(signal.SIGINT, deregister)
 
