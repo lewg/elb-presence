@@ -7,32 +7,65 @@ import sys
 import time
 import urllib2
 
+from datetime import datetime
+from boto.utils import get_instance_metadata
+from boto.compat import six
 import boto.ec2.elb
+
+
+def _convert_key_to_str(key):
+    if isinstance(key, six.text_type):
+        # the secret key must be bytes and not unicode to work
+        #  properly with hmac.new (see http://bugs.python.org/issue5285)
+        return str(key)
+    return key
+
+def _get_iam_credentials():
+    creds = dict()
+    # Lets use IAM Credentials
+    metadata = get_instance_metadata(
+                timeout=2.0, num_retries=5,
+                data='meta-data/iam/security-credentials/')
+    if metadata:
+        # I'm assuming there's only one role on the instance profile.
+        security = list(metadata.values())[0]
+        creds.access_key = security['AccessKeyId']
+        creds.secret_key = _convert_key_to_str(security['SecretAccessKey'])
+        creds.security_token = security['Token']
+        expires_at = security['Expiration']
+        creds.credential_expiry_time = datetime.strptime(
+            expires_at, "%Y-%m-%dT%H:%M:%SZ")
+        boto.log.debug("Retrieved credentials will expire in %s at: %s",
+                       creds.credential_expiry_time - datetime.now(), expires_at)
+        return(creds)
+    else:
+        quit()
+
+def deregister_func(lbname, instance):
+    def handler(*args, **kwargs):
+        print("Deregistering instance {} from ELB {}".format(instance, lbname))
+        conn.deregister_instances(lbname, [instance])
+        sys.exit(0)
+    return handler
+
 
 parser = argparse.ArgumentParser(description='Register the local EC2 instance in an ELB')
 parser.add_argument('--lbname', metavar='<NAME>', default=os.environ.get('ELB_NAME'),
                     help='Name of AWS ELB that should be used for registration')
 parser.add_argument('--region', metavar='<REGION>', default=os.environ.get('AWS_REGION'),
                     help='AWS region in which the ELB resides')
-parser.add_argument('--access-key', metavar='<ACCESS>', default=os.environ.get('AWS_ACCESS_KEY'))
-parser.add_argument('--secret-key', metavar='<SECRET>', default=os.environ.get('AWS_SECRET_KEY'))
 args = parser.parse_args()
 
+creds = _get_iam_credentials()
+
 conn = boto.ec2.elb.connect_to_region(args.region,
-                                      aws_access_key_id=args.access_key,
+                                      aws_access_key_id=creds.access_key,
                                       aws_secret_access_key=args.secret_key)
 
 instance = urllib2.urlopen('http://169.254.169.254/latest/meta-data/instance-id').read()
 
-print "Registering instance {} to ELB {}".format(instance, args.lbname)
+print("Registering instance {} to ELB {}".format(instance, args.lbname))
 conn.register_instances(args.lbname, [instance])
-
-def deregister_func(lbname, instance):
-    def handler(*args, **kwargs):
-        print "Deregistering instance {} from ELB {}".format(instance, lbname)
-        conn.deregister_instances(lbname, [instance])
-        sys.exit(0)
-    return handler
 
 deregister = deregister_func(args.lbname, instance)
 signal.signal(signal.SIGTERM, deregister)
