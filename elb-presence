@@ -60,7 +60,7 @@ creds = _get_iam_credentials()
 
 conn = boto.ec2.elb.connect_to_region(args.region,
                                       aws_access_key_id=creds['access_key'],
-                                      aws_secret_access_key=args['secret_key'])
+                                      aws_secret_access_key=creds['secret_key'])
 
 metadata = get_instance_metadata(timeout=2.0, num_retries=5,
             data='meta-data/instance-id')
