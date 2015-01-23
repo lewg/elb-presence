@@ -47,10 +47,8 @@ def _get_iam_credentials():
 
 def deregister_func(lbname, region, instance):
     def handler(*args, **kwargs):
-        # Refresh Credentials If Necessary
-        if creds['credential_expiry_time'] < datetime.now:
-            creds = _get_iam_credentials()
-            conn = _get_connection(region, creds['security_token'])
+        creds = _get_iam_credentials()
+        conn = _get_connection(region, creds['security_token'])
         print("Deregistering instance {} from ELB {}".format(instance, lbname))
         conn.deregister_instances(lbname, [instance])
         sys.exit(0)
