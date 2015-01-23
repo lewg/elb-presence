@@ -8,7 +8,7 @@ import time
 
 from boto.utils import get_instance_metadata
 from boto.compat import six
-import boto.ec2.elb
+from boto.ec2.elb import connect_to_region
 
 
 def _convert_key_to_str(key):
@@ -18,32 +18,16 @@ def _convert_key_to_str(key):
         return str(key)
     return key
 
-def _get_connection(region, security_token):
-    conn = boto.ec2.elb.connect_to_region(region, security_token=security_token)
-    return(conn)
-
-def _get_iam_token():
-    security_creds = get_instance_metadata(
-                timeout=2.0, num_retries=5,
-                data='meta-data/iam/security-credentials/')
-    if security_creds:
-        # I'm assuming there's only one role on the instance profile.
-        security = list(security_creds.values())[0]
-        return(security['Token'])
-    else:
-        print("No security credentials available.")
-        sys.exit(1)
-
 def deregister_func(lbname, region, instance_id):
     def handler(*args, **kwargs):
-        elb = _get_connection(region, _get_iam_token())
+        elb = connect_to_region(region)
         print("Deregistering instance {} from ELB {}".format(instance, lbname))
         elb.deregister_instances(lbname, [instance_id])
         sys.exit(0)
     return handler
 
 def register_instance(lbname, region, instance_id):
-    elb = _get_connection(region, _get_iam_token())
+    elb = connect_to_region(region)
     print("Registering instance {} to ELB {}".format(instance, lbname))
     instances = elb.register_instances(lbname, [instance_id])
     return(instances)
