@@ -23,57 +23,51 @@ def _get_connection(region, security_token):
     conn = boto.ec2.elb.connect_to_region(region, security_token=security_token)
     return(conn)
 
-def _get_iam_credentials():
-    creds = dict()
-    # Lets use IAM Credentials
-    metadata = get_instance_metadata(
+def _get_iam_token():
+    security_creds = get_instance_metadata(
                 timeout=2.0, num_retries=5,
                 data='meta-data/iam/security-credentials/')
-    if metadata:
+    if security_creds:
         # I'm assuming there's only one role on the instance profile.
-        security = list(metadata.values())[0]
-        creds['access_key'] = security['AccessKeyId']
-        creds['secret_key'] = _convert_key_to_str(security['SecretAccessKey'])
-        creds['security_token'] = security['Token']
-        expires_at = security['Expiration']
-        creds['credential_expiry_time'] = datetime.strptime(
-            expires_at, "%Y-%m-%dT%H:%M:%SZ")
-        boto.log.debug("Retrieved credentials will expire in %s at: %s",
-                       creds['credential_expiry_time'] - datetime.now(), expires_at)
-        return(creds)
+        security = list(security_creds.values())[0]
+        return(security['Token'])
     else:
         print("No security credentials available.")
         sys.exit(1)
 
-def deregister_func(lbname, region, instance):
+def deregister_func(lbname, region, instance_id):
     def handler(*args, **kwargs):
-        creds = _get_iam_credentials()
-        conn = _get_connection(region, creds['security_token'])
+        elb = _get_connection(region, _get_iam_token())
         print("Deregistering instance {} from ELB {}".format(instance, lbname))
-        conn.deregister_instances(lbname, [instance])
+        elb.deregister_instances(lbname, [instance_id])
         sys.exit(0)
     return handler
 
+def register_instance(lbname, region, instance_id):
+    elb = _get_connection(region, _get_iam_token())
+    print("Registering instance {} to ELB {}".format(instance, args.lbname))
+    instances = elb.register_instances(lbname, [instance_id])
+    print("Remaining instances: " + ",".join(instances))
+    return(instances)
 
+# Parse arguments or get from ENV
 parser = argparse.ArgumentParser(description='Register the local EC2 instance in an ELB')
 parser.add_argument('--lbname', metavar='<NAME>', default=os.environ.get('ELB_NAME'),
                     help='Name of AWS ELB that should be used for registration')
 parser.add_argument('--region', metavar='<REGION>', default=os.environ.get('AWS_REGION'),
                     help='AWS region in which the ELB resides')
-args = parser.parse_args()
+cargs = parser.parse_args()
 
-creds = _get_iam_credentials()
-
-conn = _get_connection(args.region, creds['security_token'])
-
+# Get instance id
 metadata = get_instance_metadata(timeout=2.0, num_retries=5,
             data='meta-data/instance-id')
 instance = list(metadata.keys())[0]
 
-print("Registering instance {} to ELB {}".format(instance, args.lbname))
-conn.register_instances(args.lbname, [instance])
+# Register the Instance
+register_instance(cargs.lbname, cargs.region, instance)
 
-deregister = deregister_func(args.lbname, args.region, instance)
+# Deregistration Hooks
+deregister = deregister_func(cargs.lbname, cargs.region, instance)
 signal.signal(signal.SIGTERM, deregister)
 signal.signal(signal.SIGINT, deregister)
 
