@@ -5,7 +5,6 @@ import os
 import signal
 import sys
 import time
-import urllib2
 
 from datetime import datetime
 from boto.utils import get_instance_metadata
